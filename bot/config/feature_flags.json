@@ -1,0 +1,21 @@
+{
+    "blackjack": false,
+    "coinflip": false,
+    "achievements": false,
+    "quests": false,
+    "gift": false,
+    "stock_alerts": false,
+    "assistant": false,
+    "broadcast": false,
+    "lottery": false,
+    "leaderboard": false,
+    "promocodes": false,
+    "analytics": false,
+    "locations": false,
+    "product_types": false,
+    "reviews": false,
+    "reservations": false,
+    "manual_payments": false,
+    "media_library": false,
+    "crypto_payments": false
+}
