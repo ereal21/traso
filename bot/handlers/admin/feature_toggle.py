@@ -1,6 +1,8 @@
 
+import asyncio
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime, timedelta
 from typing import Optional
@@ -46,6 +48,35 @@ def persist_feature_toggle(function_name: str, enabled: bool) -> bool:
     except Exception as e:
         log(f"❌ Exception: {e}")
         return False
+
+def _spawn_restart_process() -> None:
+    """Restart the current interpreter, preferring a fresh process spawn."""
+
+    python_executable = sys.executable
+    args = [python_executable, *sys.argv]
+
+    try:
+        log(f"Spawning new bot process: {args}")
+        # On Windows `close_fds` must stay False if stdout/stderr are inherited.
+        subprocess.Popen(args, close_fds=os.name != "nt")
+    except Exception as exc:
+        log(f"Subprocess restart failed: {exc!r}. Falling back to execv.")
+        try:
+            os.execv(python_executable, args)
+        except Exception as exec_exc:  # pragma: no cover - defensive fallback
+            log(f"Execv restart failed: {exec_exc!r}")
+            raise
+    else:
+        # Terminate current process so only the freshly spawned one remains.
+        os._exit(0)
+
+
+async def _schedule_restart(delay: float = 1.0) -> None:
+    """Allow pending Telegram responses to flush before restarting."""
+
+    await asyncio.sleep(max(delay, 0))
+    _spawn_restart_process()
+
 
 async def feature_toggle_handler(message: types.Message):
     print(f"[DEBUG] Message from group {message.chat.id} by @{message.from_user.username if message.from_user else 'unknown'}: {message.text}")
@@ -111,8 +142,8 @@ async def feature_toggle_handler(message: types.Message):
             if success:
                 human_state = "ON" if new_state else "OFF"
                 await message.reply(f"✅ Feature '{func_name}' saved as {human_state}. Restarting...")
-                log(f"Feature '{func_name}' written to file as {human_state}. Restarting bot.")
-                os.execv(sys.executable, [sys.executable, *sys.argv])
+                log(f"Feature '{func_name}' written to file as {human_state}. Scheduling restart.")
+                asyncio.create_task(_schedule_restart())
             else:
                 await message.reply(f"❌ Failed to save feature '{func_name}'.")
                 log(f"Failed to update feature '{func_name}'")
@@ -120,8 +151,8 @@ async def feature_toggle_handler(message: types.Message):
 
     if text.lower().strip() == "restart @fgaganoybot":
         await message.reply("🔁 Restarting bot...")
-        log("Manual restart triggered.")
-        os.execv(sys.executable, [sys.executable, *sys.argv])
+        log("Manual restart triggered. Scheduling restart.")
+        asyncio.create_task(_schedule_restart())
 
 def register_feature_toggle_handler(dp: Dispatcher):
     dp.register_message_handler(
